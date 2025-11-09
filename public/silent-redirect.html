@@ -1,0 +1,10 @@
+<!doctype html>
+<html>
+  <body>
+    <script>
+      window.addEventListener('load', function () {
+        window.opener?.postMessage(window.location.href, window.origin);
+      });
+    </script>
+  </body>
+</html>

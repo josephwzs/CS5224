@@ -17,5 +17,5 @@ export const handlers = [
       token: "dev-token",
       user: { id: "1", name: username ?? "Dev User" },
     });
-  })
+  }),
 ];
