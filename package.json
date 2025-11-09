@@ -14,7 +14,7 @@
     "lint:write": "eslint --fix .",
     "prettier": "prettier --check .",
     "prettier:write": "prettier --write .",
-    "prepare": "cd .. && husky frontend/.husky"   
+    "prepare": "([ -d .git ] || [ -d ../.git ]) && npx husky install frontend/.husky || true"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [
