@@ -4,10 +4,14 @@ import App from "./App.tsx";
 import "./index.css";
 import { Amplify } from "aws-amplify";
 import outputs from "../amplify_outputs.json";
-import { Authenticator } from "@aws-amplify/ui-react";
+// import { Authenticator } from "@aws-amplify/ui-react";
 import "@aws-amplify/ui-react/styles.css";
 import { BrowserRouter } from "react-router-dom";
-// src/main.tsx
+import { NotificationProvider } from "./components/common/notification-provider.tsx";
+import { Toaster } from "sonner";
+import { EcoAuthProvider } from "./authentication/EcoAuthProvider.tsx";
+import { ThemeProvider } from "./components/theme-provider.tsx";
+
 if (import.meta.env.VITE_USE_MOCKS === "true") {
   import("./mock/browser.ts").then(({ worker }) => {
     worker.start();
@@ -18,10 +22,18 @@ Amplify.configure(outputs);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BrowserRouter>
-      <Authenticator>
-        <App />
-      </Authenticator>
-    </BrowserRouter>
+    {/* <Authenticator> */}
+    {/* <App /> */}
+    {/* </Authenticator> */}
+    <ThemeProvider>
+      <NotificationProvider>
+        <BrowserRouter>
+          <EcoAuthProvider>
+            <App />
+          </EcoAuthProvider>
+          <Toaster position="top-center" />
+        </BrowserRouter>
+      </NotificationProvider>
+    </ThemeProvider>
   </StrictMode>
 );

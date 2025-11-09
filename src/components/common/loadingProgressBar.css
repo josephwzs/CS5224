@@ -1,0 +1,21 @@
+/* loadingProgressBar.css */
+@keyframes progress-indeterminate {
+  0% {
+    left: -33%;
+    width: 33%;
+  }
+  50% {
+    left: 33%;
+    width: 33%;
+  }
+  100% {
+    left: 100%;
+    width: 33%;
+  }
+}
+
+.progress-indeterminate {
+  animation: progress-indeterminate 1.5s linear infinite;
+  position: absolute;
+  height: 100%;
+}
