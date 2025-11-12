@@ -37,9 +37,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await authContext.login(formData);
-      if (authContext.isAuthenticated) {
-        navigate("/dashboard");
-      }
+      navigate("/dashboard");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "An unknown error occurred";

@@ -5,7 +5,7 @@ export type EcoAuthContextType = {
   isAuthenticated: boolean;
   isLoading: boolean;
   isRestored: boolean;
-  login: (formData: { email: string; password: string }) => Promise<void>;
+  login: (formData: { email: string; password: string }) => Promise<any>;
   logout?: () => void;
   refreshToken?: () => Promise<void>;
   user?: string;
