@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -11,162 +11,200 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Copy, Key, Plus, Trash2, Eye, EyeOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { amplifyApi } from "@/api/amplify-api";
+import { Copy, Key, Plus, Send } from "lucide-react";
 
-const sampleCode = {
-  javascript: `// Example: Post energy data to EcoTrack API
-const apiKey = 'your_api_key_here';
-const facilityId = 'dc-01';
-
-const data = {
-  timestamp: new Date().toISOString(),
-  totalFacilityEnergy: 1500, // kWh
-  itEquipmentEnergy: 950,     // kWh
-  waterUsage: 850,            // liters
-  carbonEmissions: 650        // kg CO2
-};
-
-fetch(\`https://api.ecotrack.com/v1/facilities/\${facilityId}/metrics\`, {
-  method: 'POST',
-  headers: {
-    'Authorization': \`Bearer \${apiKey}\`,
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify(data)
-})
-.then(response => response.json())
-.then(result => console.log('Success:', result))
-.catch(error => console.error('Error:', error));`,
-  python: `# Example: Post energy data to EcoTrack API
-import requests
-from datetime import datetime
-
-api_key = 'your_api_key_here'
-facility_id = 'dc-01'
-
-data = {
-    'timestamp': datetime.now().isoformat(),
-    'totalFacilityEnergy': 1500,  # kWh
-    'itEquipmentEnergy': 950,      # kWh
-    'waterUsage': 850,             # liters
-    'carbonEmissions': 650         # kg CO2
-}
-
-headers = {
-    'Authorization': f'Bearer {api_key}',
-    'Content-Type': 'application/json'
-}
-
-response = requests.post(
-    f'https://api.ecotrack.com/v1/facilities/{facility_id}/metrics',
-    json=data,
-    headers=headers
-)
-
-print('Success:', response.json())`,
-  curl: `# Example: Post energy data to EcoTrack API
-curl -X POST https://api.ecotrack.com/v1/facilities/dc-01/metrics \\
-  -H "Authorization: Bearer your_api_key_here" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "timestamp": "2025-01-09T12:00:00Z",
-    "totalFacilityEnergy": 1500,
-    "itEquipmentEnergy": 950,
-    "waterUsage": 850,
-    "carbonEmissions": 650
-  }'`,
-};
-
-type ApiKey = {
-  id: string;
+type IngestToken = {
+  token_id: string;
   name: string;
-  key: string;
-  createdAt: string;
-  lastUsed: string;
+  active: boolean;
+  created_at: string;
+  last_used_at: string | null;
 };
 
 export default function DeveloperPage() {
-  const [apiKeys, setApiKeys] = useState<ApiKey[]>([
-    {
-      id: "1",
-      name: "Production Server",
-      key: "ect_sk_prod_a1b2c3d4e5f6g7h8i9j0",
-      createdAt: "2025-01-01",
-      lastUsed: "2 hours ago",
-    },
-  ]);
-  const [newKeyName, setNewKeyName] = useState("");
-  const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
+  const [tokens, setTokens] = useState<IngestToken[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const [creating, setCreating] = useState(false);
+  const [newTokenName, setNewTokenName] = useState("");
+  const [lastTokenPlain, setLastTokenPlain] = useState<string | null>(null);
+
+  const [testSiteId, setTestSiteId] = useState("");
+  const [testItLoad, setTestItLoad] = useState<string>("50");
+  const [testIndicator, setTestIndicator] = useState<"PUE" | "WUE" | "CUE">(
+    "PUE"
+  );
+  const [testValue, setTestValue] = useState<string>("1.42");
+  const [sending, setSending] = useState(false);
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 600);
-    return () => clearTimeout(timer);
+    (async () => {
+      try {
+        const res = await amplifyApi.get<{ tokens: IngestToken[] }>(
+          "BackendApi",
+          "/ingest_tokens"
+        );
+        setTokens(res.tokens ?? []);
+      } catch (e) {
+        console.error(e);
+        toast.error("Failed to load API tokens");
+      } finally {
+        setIsLoading(false);
+      }
+    })();
   }, []);
 
-  const generateApiKey = () => {
-    if (!newKeyName.trim()) {
-      toast.error("Please enter a name for your API key", {
-        description: "Please enter a name for your API key",
+  const hasTokens = useMemo(() => (tokens?.length ?? 0) > 0, [tokens]);
+
+  async function generateToken() {
+    if (!newTokenName.trim()) {
+      toast.error("Please enter a name for your token");
+      return;
+    }
+    setCreating(true);
+    try {
+      const created = await amplifyApi.post<{
+        token_id: string;
+        token: string;
+        name: string;
+      }>("BackendApi", "/ingest_tokens", { name: newTokenName.trim() } as any);
+
+      setNewTokenName("");
+      setLastTokenPlain(created.token);
+
+      const list = await amplifyApi.get<{ tokens: IngestToken[] }>(
+        "BackendApi",
+        "/ingest_tokens"
+      );
+      setTokens(list.tokens ?? []);
+
+      toast.success("Token generated", {
+        description: "Copy this token now. It won’t be shown again.",
       });
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to generate token");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  function copy(text: string) {
+    navigator.clipboard.writeText(text);
+    toast.success("Copied to clipboard");
+  }
+
+  async function sendTestMetric() {
+    if (!lastTokenPlain) {
+      toast.error("Generate a token first");
+      return;
+    }
+    if (!testSiteId.trim()) {
+      toast.error("Enter a site_id to test against");
+      return;
+    }
+    const it = testItLoad ? Number(testItLoad) : undefined;
+    const val = Number(testValue);
+    if (Number.isNaN(val)) {
+      toast.error("Provide a numeric test value");
       return;
     }
 
-    const newKey: ApiKey = {
-      id: Date.now().toString(),
-      name: newKeyName,
-      key: `ect_sk_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`,
-      createdAt: new Date().toISOString().split("T")[0],
-      lastUsed: "Never",
-    };
-
-    setApiKeys([...apiKeys, newKey]);
-    setNewKeyName("");
-    toast.success("API Key Generated", {
-      description:
-        "Your new API key has been created. Make sure to copy it now as it won't be shown again.",
-    });
-  };
-
-  const deleteApiKey = (id: string) => {
-    setApiKeys(apiKeys.filter((key) => key.id !== id));
-    toast.success("API Key Deleted", {
-      description: "The API key has been removed.",
-    });
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success("Copied", {
-      description: "Content copied to clipboard",
-    });
-  };
-
-  const toggleKeyVisibility = (id: string) => {
-    const newVisible = new Set(visibleKeys);
-    if (newVisible.has(id)) {
-      newVisible.delete(id);
-    } else {
-      newVisible.add(id);
+    setSending(true);
+    try {
+      await amplifyApi.post(
+        "BackendApi",
+        "/metrics",
+        {
+          site_id: testSiteId.trim(),
+          measured_at: new Date().toISOString(),
+          it_load_pct: it,
+          measurements: [{ indicator: testIndicator, value: val }],
+        } as any,
+        {
+          "X-Api-Key": lastTokenPlain,
+        }
+      );
+      toast.success("Test metric sent", {
+        description:
+          "If the value breaches a threshold, an alert will open or update.",
+      });
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to send test metric");
+    } finally {
+      setSending(false);
     }
-    setVisibleKeys(newVisible);
-  };
+  }
 
-  const maskApiKey = (key: string) => {
-    return key.substring(0, 12) + "•".repeat(20);
-  };
+  const codeToken = lastTokenPlain ?? "YOUR_INGEST_TOKEN";
+  const codeSite = testSiteId || "YOUR_SITE_ID";
+
+  const curlSnippet = `curl -X POST "${
+    import.meta.env.VITE_API_BASE ?? "https://api.example.com"
+  }/metrics" \\
+  -H "X-Api-Key: ${codeToken}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "site_id": "${codeSite}",
+    "measured_at": "2025-11-14T12:00:00Z",
+    "it_load_pct": 50,
+    "measurements": [
+      { "indicator": "PUE", "value": 1.42 },
+      { "indicator": "WUE", "value": 1.95 },
+      { "indicator": "CUE", "value": 0.55 }
+    ]
+  }'`;
+
+  const pySnippet = `import requests, datetime
+
+resp = requests.post(
+  f'${import.meta.env.VITE_API_BASE ?? "https://api.example.com"}/metrics',
+  headers={'X-Api-Key': '${codeToken}', 'Content-Type': 'application/json'},
+  json={
+    'site_id': '${codeSite}',
+    'measured_at': datetime.datetime.utcnow().isoformat() + 'Z',
+    'it_load_pct': 50,
+    'measurements': [
+      {'indicator':'PUE','value':1.42},
+      {'indicator':'WUE','value':1.95},
+      {'indicator':'CUE','value':0.55},
+    ],
+  }
+)
+print(resp.status_code, resp.json())`;
+
+  const jsSnippet = `await fetch('${
+    import.meta.env.VITE_API_BASE ?? "https://api.example.com"
+  }/metrics', {
+  method: 'POST',
+  headers: {
+    'X-Api-Key': '${codeToken}',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    site_id: '${codeSite}',
+    measured_at: new Date().toISOString(),
+    it_load_pct: 50,
+    measurements: [
+      { indicator: 'PUE', value: 1.42 },
+      { indicator: 'WUE', value: 1.95 },
+      { indicator: 'CUE', value: 0.55 },
+    ],
+  }),
+});`;
 
   return (
     <AppLayout>
       <div>
         <h1 className="text-3xl font-bold text-balance">Developer Portal</h1>
         <p className="text-muted-foreground">
-          API documentation and integration tools for automated data ingestion
+          Generate an ingestion token and configure your BMS/DCIM/scripts to
+          push PUE/WUE/CUE to the Open API.
         </p>
       </div>
 
@@ -175,17 +213,17 @@ export default function DeveloperPage() {
           <Skeleton className="h-10 w-64" />
           <Card>
             <CardHeader>
-              <Skeleton className="h-6 w-40" />
-              <Skeleton className="mt-2 h-4 w-64" />
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="mt-2 h-4 w-72" />
             </CardHeader>
             <CardContent>
-              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-24 w-full" />
             </CardContent>
           </Card>
           <Card>
             <CardHeader>
-              <Skeleton className="h-6 w-32" />
-              <Skeleton className="mt-2 h-4 w-56" />
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="mt-2 h-4 w-60" />
             </CardHeader>
             <CardContent>
               <Skeleton className="h-40 w-full" />
@@ -193,241 +231,209 @@ export default function DeveloperPage() {
           </Card>
         </div>
       ) : (
-        <Tabs defaultValue="api-keys" className="space-y-6">
+        <Tabs defaultValue="tokens" className="space-y-6">
           <TabsList>
-            <TabsTrigger value="api-keys">API Keys</TabsTrigger>
-            <TabsTrigger value="documentation">Documentation</TabsTrigger>
-            <TabsTrigger value="examples">Code Examples</TabsTrigger>
+            <TabsTrigger value="tokens">Generate Token</TabsTrigger>
+            <TabsTrigger value="docs">Documentation</TabsTrigger>
+            <TabsTrigger value="test">Send Test Metric</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="api-keys" className="space-y-6">
+          <TabsContent value="tokens" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Generate New API Key</CardTitle>
+                <CardTitle>Generate token</CardTitle>
                 <CardDescription>
-                  Create an API key to authenticate your applications with
-                  EcoTrack
+                  Click <span className="font-medium">Generate Token</span> and
+                  copy it. For security, it will not be shown again.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                <Label htmlFor="tokenName">Token name</Label>
                 <div className="flex gap-4">
                   <div className="flex-1 space-y-2">
-                    <Label htmlFor="keyName">Key Name</Label>
                     <Input
-                      id="keyName"
-                      placeholder="e.g., Production Server, BMS Integration"
-                      value={newKeyName}
-                      onChange={(e) => setNewKeyName(e.target.value)}
+                      id="tokenName"
+                      placeholder="e.g., BMS Push, DCIM Writer"
+                      value={newTokenName}
+                      onChange={(e) => setNewTokenName(e.target.value)}
                     />
                   </div>
-                  <div className="flex items-end">
-                    <Button onClick={generateApiKey}>
+                  <div className="flex items-end ">
+                    <Button onClick={generateToken} disabled={creating}>
                       <Plus className="mr-2 h-4 w-4" />
-                      Generate Key
+                      {creating ? "Generating..." : "Generate Token"}
                     </Button>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Your API Keys</CardTitle>
-                <CardDescription>
-                  Manage your active API keys for accessing the EcoTrack API
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {apiKeys.map((apiKey) => (
-                    <div
-                      key={apiKey.id}
-                      className="flex items-center justify-between rounded-lg border bg-card p-4"
-                    >
-                      <div className="flex flex-1 items-center gap-4">
-                        <Key className="h-5 w-5 text-muted-foreground" />
-                        <div className="flex-1">
-                          <p className="font-medium text-foreground">
-                            {apiKey.name}
-                          </p>
-                          <div className="flex items-center gap-2">
-                            <code className="text-xs font-mono text-muted-foreground">
-                              {visibleKeys.has(apiKey.id)
-                                ? apiKey.key
-                                : maskApiKey(apiKey.key)}
-                            </code>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0"
-                              onClick={() => toggleKeyVisibility(apiKey.id)}
-                            >
-                              {visibleKeys.has(apiKey.id) ? (
-                                <EyeOff className="h-3 w-3" />
-                              ) : (
-                                <Eye className="h-3 w-3" />
-                              )}
-                            </Button>
+                {lastTokenPlain && (
+                  <div className="rounded-lg border bg-muted/40 p-4">
+                    <div className="mb-2 flex items-center gap-2">
+                      <Key className="h-4 w-4" />
+                      <span className="text-sm font-medium">
+                        Your new token (copy now)
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <pre className="rounded bg-background p-3 text-sm overflow-x-auto">
+                        <code>{lastTokenPlain}</code>
+                      </pre>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-2 top-2"
+                        onClick={() => copy(lastTokenPlain)}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label>Your tokens</Label>
+                  {!hasTokens ? (
+                    <p className="text-sm text-muted-foreground">
+                      No tokens yet. Generate one to get started.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {tokens.map((t) => (
+                        <div
+                          key={t.token_id}
+                          className="flex items-center justify-between rounded-lg border bg-card p-4"
+                        >
+                          <div className="flex flex-1 items-center gap-3">
+                            <Key className="h-5 w-5 text-muted-foreground" />
+                            <div className="flex-1">
+                              <p className="font-medium text-foreground">
+                                {t.name}
+                              </p>
+                              <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
+                                <span>Created: {t.created_at}</span>
+                                <span>
+                                  Last used: {t.last_used_at ?? "Never"}
+                                </span>
+                              </div>
+                            </div>
                           </div>
-                          <div className="mt-1 flex gap-4 text-xs text-muted-foreground">
-                            <span>Created: {apiKey.createdAt}</span>
-                            <span>Last used: {apiKey.lastUsed}</span>
-                          </div>
+                          <Badge
+                            variant={t.active ? "default" : "secondary"}
+                            className="uppercase"
+                          >
+                            {t.active ? "Active" : "Inactive"}
+                          </Badge>
                         </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyToClipboard(apiKey.key)}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => deleteApiKey(apiKey.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="documentation" className="space-y-6">
+          {/* Docs */}
+          <TabsContent value="docs" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>API Endpoints</CardTitle>
+                <CardTitle>How it works</CardTitle>
                 <CardDescription>
-                  Available endpoints for interacting with EcoTrack
+                  Systems POST metrics to <code>/metrics</code> with your token.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="rounded-lg border p-4">
-                    <div className="mb-2 flex items-center gap-2">
-                      <Badge className="bg-success text-success-foreground">
-                        POST
-                      </Badge>
-                      <code className="text-sm font-mono text-foreground">
-                        /v1/facilities/{"{facilityId}"}/metrics
-                      </code>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Submit sustainability metrics for a specific facility.
-                      Accepts energy consumption, water usage, and carbon
-                      emissions data.
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg border p-4">
-                    <div className="mb-2 flex items-center gap-2">
-                      <Badge variant="secondary">GET</Badge>
-                      <code className="text-sm font-mono text-foreground">
-                        /v1/facilities/{"{facilityId}"}/metrics
-                      </code>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Retrieve historical metrics for a facility. Supports date
-                      range filtering and metric-specific queries.
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg border p-4">
-                    <div className="mb-2 flex items-center gap-2">
-                      <Badge variant="secondary">GET</Badge>
-                      <code className="text-sm font-mono text-foreground">
-                        /v1/facilities
-                      </code>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      List all facilities in your organization with their
-                      current compliance status.
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg border p-4">
-                    <div className="mb-2 flex items-center gap-2">
-                      <Badge variant="secondary">GET</Badge>
-                      <code className="text-sm font-mono text-foreground">
-                        /v1/facilities/{"{facilityId}"}/compliance
-                      </code>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Get compliance status and threshold information for a
-                      specific facility.
-                    </p>
-                  </div>
-                </div>
+              <CardContent className="space-y-4">
+                <ol className="space-y-3 text-sm">
+                  <li>
+                    <span className="font-medium">1. Generate a token:</span>{" "}
+                    Open API Access → Generate Token.
+                  </li>
+                  <li>
+                    <span className="font-medium">
+                      2. Configure your BMS/DCIM/scripts:
+                    </span>{" "}
+                    store the token securely (env var, secret manager).
+                  </li>
+                  <li>
+                    <span className="font-medium">
+                      3. POST metrics to /metrics:
+                    </span>{" "}
+                    include <code>X-Api-Key</code> or{" "}
+                    <code>Authorization: Ingest &lt;token&gt;</code>.
+                  </li>
+                </ol>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Authentication</CardTitle>
-                <CardDescription>
-                  How to authenticate your API requests
-                </CardDescription>
+                <CardTitle>Request format</CardTitle>
+                <CardDescription>JSON body sent to /metrics</CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="mb-4 text-sm text-foreground">
-                  All API requests must include your API key in the
-                  Authorization header using Bearer authentication:
+                <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-sm">
+                  <code className="text-foreground">{`{
+  "site_id": "YOUR_SITE_ID",
+  "measured_at": "2025-11-14T12:00:00Z", // optional; now() if omitted
+  "it_load_pct": 50,                     // optional; used for PUE banding
+  "measurements": [
+    { "indicator": "PUE", "value": 1.42 },
+    { "indicator": "WUE", "value": 1.95 },
+    { "indicator": "CUE", "value": 0.55 }
+  ]
+}`}</code>
+                </pre>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Comparator is <code>{"<="}</code>. A breach occurs when
+                  observed value &gt; threshold. CRIT overrides WARN. If no{" "}
+                  <code>measured_at</code> is provided, the server stores the
+                  current time.
                 </p>
-                <div className="relative">
-                  <pre className="rounded-lg bg-muted p-4 text-sm">
-                    <code className="text-foreground">
-                      Authorization: Bearer ect_sk_your_api_key_here
-                    </code>
-                  </pre>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-2 top-2"
-                    onClick={() =>
-                      copyToClipboard(
-                        "Authorization: Bearer ect_sk_your_api_key_here"
-                      )
-                    }
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Data Schema</CardTitle>
-                <CardDescription>
-                  Expected data format for metric submissions
-                </CardDescription>
+                <CardTitle>Examples</CardTitle>
+                <CardDescription>curl / Python / JS</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
                 <div className="relative">
                   <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-sm">
-                    <code className="text-foreground">{`{
-  "timestamp": "2025-01-09T12:00:00Z",
-  "totalFacilityEnergy": 1500,  // kWh
-  "itEquipmentEnergy": 950,      // kWh
-  "waterUsage": 850,             // liters
-  "carbonEmissions": 650         // kg CO2
-}
-
-// Calculated automatically:
-// PUE = totalFacilityEnergy / itEquipmentEnergy
-// WUE = waterUsage / itEquipmentEnergy
-// CUE = carbonEmissions / itEquipmentEnergy`}</code>
+                    <code className="text-foreground">{curlSnippet}</code>
                   </pre>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="absolute right-2 top-2"
-                    onClick={() => copyToClipboard(sampleCode.javascript)}
+                    onClick={() => copy(curlSnippet)}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="relative">
+                  <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-sm">
+                    <code className="text-foreground">{pySnippet}</code>
+                  </pre>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-2 top-2"
+                    onClick={() => copy(pySnippet)}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="relative">
+                  <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-sm">
+                    <code className="text-foreground">{jsSnippet}</code>
+                  </pre>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-2 top-2"
+                    onClick={() => copy(jsSnippet)}
                   >
                     <Copy className="h-4 w-4" />
                   </Button>
@@ -436,150 +442,77 @@ export default function DeveloperPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="examples" className="space-y-6">
+          {/* Test sender */}
+          <TabsContent value="test" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>JavaScript / Node.js</CardTitle>
+                <CardTitle>Send test metric</CardTitle>
                 <CardDescription>
-                  Example implementation using fetch API
+                  Uses your latest generated token to send one measurement.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="relative">
-                  <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-sm">
-                    <code className="text-foreground">
-                      {sampleCode.javascript}
-                    </code>
-                  </pre>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-2 top-2"
-                    onClick={() => copyToClipboard(sampleCode.javascript)}
-                  >
-                    <Copy className="h-4 w-4" />
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="siteId">site_id</Label>
+                    <Input
+                      id="siteId"
+                      placeholder="e.g., 6b7d8f1a-51e0-4a8c-9b08-6b2a9f0f0a10"
+                      value={testSiteId}
+                      onChange={(e) => setTestSiteId(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="itpct">it_load_pct (optional)</Label>
+                    <Input
+                      id="itpct"
+                      placeholder="25 | 50 | 75 | 100"
+                      value={testItLoad}
+                      onChange={(e) => setTestItLoad(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>indicator</Label>
+                    <div className="flex gap-2">
+                      {(["PUE", "WUE", "CUE"] as const).map((k) => (
+                        <Button
+                          key={k}
+                          type="button"
+                          variant={testIndicator === k ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setTestIndicator(k)}
+                        >
+                          {k}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="val">value</Label>
+                    <Input
+                      id="val"
+                      placeholder="e.g., 1.42"
+                      value={testValue}
+                      onChange={(e) => setTestValue(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
+                  <p className="text-xs text-muted-foreground">
+                    Header: <code>X-Api-Key: {"<your token>"}</code> or{" "}
+                    <code>Authorization: Ingest {"<your token>"}</code>
+                  </p>
+                  <Button onClick={sendTestMetric} disabled={sending}>
+                    <Send className="mr-2 h-4 w-4" />
+                    {sending ? "Sending..." : "Send test"}
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Python</CardTitle>
-                <CardDescription>
-                  Example implementation using requests library
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="relative">
-                  <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-sm">
-                    <code className="text-foreground">{sampleCode.python}</code>
-                  </pre>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-2 top-2"
-                    onClick={() => copyToClipboard(sampleCode.python)}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>cURL</CardTitle>
-                <CardDescription>
-                  Example implementation using command line
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="relative">
-                  <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-sm">
-                    <code className="text-foreground">{sampleCode.curl}</code>
-                  </pre>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-2 top-2"
-                    onClick={() => copyToClipboard(sampleCode.curl)}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Integration Flow</CardTitle>
-                <CardDescription>
-                  Recommended workflow for automated data ingestion
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex gap-4">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                      1
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">
-                        Connect to your data sources
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Building Management Systems (BMS), power monitoring
-                        tools, or other infrastructure
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-4">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                      2
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">
-                        Schedule periodic data collection
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Set up cron jobs or scheduled tasks to collect metrics
-                        at regular intervals
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-4">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                      3
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">
-                        Transform and submit data
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Format the data according to the API schema and POST to
-                        EcoTrack
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-4">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                      4
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">
-                        Monitor real-time updates
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Dashboard metrics update automatically with calculated
-                        PUE, WUE, and CUE values
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                {!lastTokenPlain && (
+                  <p className="text-xs text-muted-foreground">
+                    Tip: Generate a token first (Tokens tab). The plaintext
+                    token will appear once — copy it and keep it safe.
+                  </p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

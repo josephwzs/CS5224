@@ -1,9 +1,7 @@
-// src/mocks/handlers.ts
 import { http, HttpResponse } from "msw";
 
 const API_BASE = "http://localhost:8080";
 
-// Simple mock "JWT" generator (base64 of payload)
 function createMockToken(username: string) {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const payload = btoa(
@@ -11,7 +9,8 @@ function createMockToken(username: string) {
       sub: username,
       name: username,
       company_id: "mock-company-1",
-      exp: Math.floor(Date.now() / 1000) + 3600, // expires in 1h
+      user_id: "mock-user-1",
+      exp: Math.floor(Date.now() / 1000) + 3600,
       iat: Math.floor(Date.now() / 1000),
     })
   );
@@ -41,13 +40,51 @@ function getCompanyIdFromRequest(req: Request): string {
   return hdr || "mock-company-1";
 }
 
-// ---- Mock DB ----
+function getClaimsFromRequest(req: Request): {
+  company_id: string;
+  user_id: string;
+  sub?: string;
+  name?: string;
+} {
+  const auth =
+    req.headers.get("authorization") || req.headers.get("Authorization");
+  if (auth?.startsWith("Bearer ")) {
+    const jwt = auth.substring("Bearer ".length).trim();
+    const decoded = decodeMockJwt(jwt) || {};
+    return {
+      company_id: decoded.company_id ?? "mock-company-1",
+      user_id: decoded.user_id ?? "mock-user-1",
+      sub: decoded.sub,
+      name: decoded.name,
+    };
+  }
+  return {
+    company_id: "mock-company-1",
+    user_id: "mock-user-1",
+  };
+}
+
+function randomId(prefix: string) {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function randomTokenString(): string {
+  return (
+    Math.random().toString(36).slice(2) +
+    Math.random().toString(36).slice(2) +
+    Math.random().toString(36).slice(2)
+  );
+}
+
 type MockSite = {
   site_id: string;
   name: string;
   country: string;
   timezone: string;
-  created_at: string; // ISO for sorting desc
+  created_at: string;
 };
 
 const SITES: MockSite[] = [
@@ -78,8 +115,6 @@ const SITES: MockSite[] = [
 function sortSitesDesc(a: MockSite, b: MockSite) {
   return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
 }
-
-// ---- Framework / thresholds / alerts mocks ----
 
 type MockFramework = {
   framework_code: string;
@@ -121,7 +156,6 @@ type MockSiteFramework = {
   precedence: number;
 };
 
-// seed some defaults
 let SITE_FRAMEWORKS: MockSiteFramework[] = [
   {
     site_id: SITES[0].site_id,
@@ -150,14 +184,11 @@ type ThresholdRule = {
   load_band: number | null;
 };
 
-type ThresholdKey = string; // `${company_id}:${site_id}:${framework_code}`
+type ThresholdKey = string;
 
 const GRID_EF_SG = 0.4057;
 
-// In-memory thresholds per company+site+framework
 const THRESHOLDS: Record<ThresholdKey, ThresholdRule[]> = {};
-
-// Simple helpers to build preset rules (same logic as UI)
 
 function buildGmdcRules(loadAware: boolean): ThresholdRule[] {
   const pueBands = [
@@ -208,7 +239,6 @@ function buildGmdcRules(loadAware: boolean): ThresholdRule[] {
     );
   }
 
-  // WUE static
   rules.push(
     {
       indicator: "WUE",
@@ -226,7 +256,6 @@ function buildGmdcRules(loadAware: boolean): ThresholdRule[] {
     }
   );
 
-  // CUE – explicit thresholds (optional, but useful for mock)
   if (loadAware) {
     for (const b of pueBands) {
       rules.push(
@@ -271,7 +300,6 @@ function buildGmdcRules(loadAware: boolean): ThresholdRule[] {
 
 function buildCorpDefaultRules(): ThresholdRule[] {
   return [
-    // PUE static
     {
       indicator: "PUE",
       comparator: "<=",
@@ -286,7 +314,6 @@ function buildCorpDefaultRules(): ThresholdRule[] {
       value: 1.4,
       load_band: null,
     },
-    // WUE static
     {
       indicator: "WUE",
       comparator: "<=",
@@ -301,19 +328,18 @@ function buildCorpDefaultRules(): ThresholdRule[] {
       value: 2.1,
       load_band: null,
     },
-    // CUE static
     {
       indicator: "CUE",
       comparator: "<=",
       severity: "WARN",
-      value: parseFloat((1.35 * GRID_EF_SG).toFixed(3)), // 0.548
+      value: parseFloat((1.35 * GRID_EF_SG).toFixed(3)),
       load_band: null,
     },
     {
       indicator: "CUE",
       comparator: "<=",
       severity: "CRIT",
-      value: parseFloat((1.4 * GRID_EF_SG).toFixed(3)), // 0.568
+      value: parseFloat((1.4 * GRID_EF_SG).toFixed(3)),
       load_band: null,
     },
   ];
@@ -321,7 +347,6 @@ function buildCorpDefaultRules(): ThresholdRule[] {
 
 function buildSlaStrictRules(): ThresholdRule[] {
   return [
-    // PUE static
     {
       indicator: "PUE",
       comparator: "<=",
@@ -336,7 +361,6 @@ function buildSlaStrictRules(): ThresholdRule[] {
       value: 1.35,
       load_band: null,
     },
-    // WUE static
     {
       indicator: "WUE",
       comparator: "<=",
@@ -351,19 +375,18 @@ function buildSlaStrictRules(): ThresholdRule[] {
       value: 2.0,
       load_band: null,
     },
-    // CUE static
     {
       indicator: "CUE",
       comparator: "<=",
       severity: "WARN",
-      value: parseFloat((1.3 * GRID_EF_SG).toFixed(3)), // 0.527
+      value: parseFloat((1.3 * GRID_EF_SG).toFixed(3)),
       load_band: null,
     },
     {
       indicator: "CUE",
       comparator: "<=",
       severity: "CRIT",
-      value: parseFloat((1.35 * GRID_EF_SG).toFixed(3)), // 0.548
+      value: parseFloat((1.35 * GRID_EF_SG).toFixed(3)),
       load_band: null,
     },
   ];
@@ -372,7 +395,6 @@ function buildSlaStrictRules(): ThresholdRule[] {
 function buildPresetRules(frameworkCode: string): ThresholdRule[] {
   switch (frameworkCode) {
     case "GMDC_SG_2024":
-      // For mocks, default GMDC to load-aware
       return buildGmdcRules(true);
     case "CORP_DEFAULT":
       return buildCorpDefaultRules();
@@ -391,7 +413,6 @@ function getThresholdKey(
   return `${companyId}:${siteId}:${frameworkCode}`;
 }
 
-// Alerts mock
 type MockAlert = {
   alert_id: string;
   site_id: string;
@@ -435,11 +456,42 @@ let ALERTS: MockAlert[] = [
   },
 ];
 
+type IngestToken = {
+  token_id: string;
+  name: string;
+  active: boolean;
+  created_at: string;
+  last_used_at: string | null;
+  company_id: string;
+  user_id: string;
+  plaintext: string;
+};
+
+let INGEST_TOKENS: IngestToken[] = [];
+
+function authIngestToken(req: Request): IngestToken | null {
+  const headers = req.headers;
+  let token = headers.get("x-api-key") || headers.get("X-Api-Key") || null;
+
+  if (!token) {
+    const auth = headers.get("authorization") || headers.get("Authorization");
+    if (auth?.startsWith("Ingest ")) {
+      token = auth.substring("Ingest ".length).trim();
+    }
+  }
+
+  if (!token) return null;
+
+  const found = INGEST_TOKENS.find((t) => t.active && t.plaintext === token);
+  if (!found) return null;
+
+  found.last_used_at = new Date().toISOString();
+  return found;
+}
+
 export const handlers = [
-  // Health check
   http.get("/healthz", () => HttpResponse.json({ ok: true })),
 
-  // Login endpoint
   http.post(`${API_BASE}/auth/login`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
     const { username = "Dev User" } = body as any;
@@ -453,7 +505,6 @@ export const handlers = [
     });
   }),
 
-  // 🔹 Register endpoint (new)
   http.post(`${API_BASE}/auth/register`, async ({ request }) => {
     const body = await request.json().catch(() => ({}));
     const { company_name, email, password } = body as any;
@@ -465,7 +516,6 @@ export const handlers = [
       );
     }
 
-    // Mock token + fake user
     const token = createMockToken(email);
     const user = {
       id: "reg-" + Math.floor(Math.random() * 1000),
@@ -484,7 +534,6 @@ export const handlers = [
     );
   }),
 
-  // ---- Sites ----
   http.get(`${API_BASE}/sites`, async ({ request }) => {
     const allSites = SITES.slice().sort(sortSitesDesc);
 
@@ -499,12 +548,10 @@ export const handlers = [
     return HttpResponse.json(sites);
   }),
 
-  // ---- Frameworks (GET /frameworks) ----
   http.get(`${API_BASE}/frameworks`, async () => {
     return HttpResponse.json({ frameworks: FRAMEWORKS });
   }),
 
-  // ---- Site frameworks (GET /site_frameworks?site_id=...) ----
   http.get(`${API_BASE}/site_frameworks`, async ({ request }) => {
     const url = new URL(request.url);
     const siteId = url.searchParams.get("site_id") || "";
@@ -526,7 +573,6 @@ export const handlers = [
     });
   }),
 
-  // ---- Site frameworks (POST /site_frameworks) ----
   http.post(`${API_BASE}/site_frameworks`, async ({ request }) => {
     const body = (await request.json().catch(() => ({}))) as {
       site_id?: string;
@@ -546,7 +592,6 @@ export const handlers = [
     }
 
     if (!Array.isArray(body.assignments)) {
-      // treat as "no-op" / deactivate all
       SITE_FRAMEWORKS = SITE_FRAMEWORKS.filter((sf) => sf.site_id !== siteId);
       return HttpResponse.json({ ok: true });
     }
@@ -559,10 +604,8 @@ export const handlers = [
       );
     }
 
-    // Clear existing for this site
     SITE_FRAMEWORKS = SITE_FRAMEWORKS.filter((sf) => sf.site_id !== siteId);
 
-    // Insert new
     for (const a of body.assignments) {
       const code = (a.framework_code || "").trim();
       const fw = FRAMEWORKS.find((f) => f.framework_code === code);
@@ -580,7 +623,6 @@ export const handlers = [
     return HttpResponse.json({ ok: true });
   }),
 
-  // ---- Thresholds (GET /thresholds?site_id=...&framework_code=...) ----
   http.get(`${API_BASE}/thresholds`, async ({ request }) => {
     const url = new URL(request.url);
     const siteId = (url.searchParams.get("site_id") || "").trim();
@@ -598,7 +640,6 @@ export const handlers = [
     const companyId = getCompanyIdFromRequest(request);
     const key = getThresholdKey(companyId, siteId, frameworkCode);
 
-    // if not present yet, seed from preset
     if (!THRESHOLDS[key]) {
       THRESHOLDS[key] = buildPresetRules(frameworkCode);
     }
@@ -610,7 +651,6 @@ export const handlers = [
     });
   }),
 
-  // ---- Thresholds (POST /thresholds) ----
   http.post(`${API_BASE}/thresholds`, async ({ request }) => {
     const body = (await request.json().catch(() => ({}))) as {
       site_id?: string;
@@ -631,7 +671,6 @@ export const handlers = [
     const companyId = getCompanyIdFromRequest(request);
     const key = getThresholdKey(companyId, siteId, frameworkCode);
 
-    // Trust UI to send valid rules; you can add validation if needed
     THRESHOLDS[key] = body.rules.map((r) => ({
       indicator: r.indicator,
       comparator: r.comparator,
@@ -644,7 +683,6 @@ export const handlers = [
     return HttpResponse.json({ ok: true });
   }),
 
-  // ---- Alerts (GET /alerts?status=&framework_code=&site_id=...) ----
   http.get(`${API_BASE}/alerts`, async ({ request }) => {
     const url = new URL(request.url);
     const status = (url.searchParams.get("status") || "OPEN")
@@ -669,7 +707,6 @@ export const handlers = [
       filtered = filtered.filter((a) => a.site_id === siteId);
     }
 
-    // Shape like Python: alert_id, site_id, indicator, severity, comparator, threshold_value, observed_value, status, raised_at, cleared_at
     const alerts = filtered.map((a) => ({
       alert_id: a.alert_id,
       site_id: a.site_id,
@@ -684,5 +721,118 @@ export const handlers = [
     }));
 
     return HttpResponse.json({ alerts });
+  }),
+
+  http.post(`${API_BASE}/ingest_tokens`, async ({ request }) => {
+    const claims = getClaimsFromRequest(request);
+    const companyId = claims.company_id;
+    const userId = claims.user_id;
+    if (!companyId || !userId) {
+      return HttpResponse.json({ message: "unauthorized" }, { status: 401 });
+    }
+
+    const body = (await request.json().catch(() => ({}))) as {
+      name?: string;
+    };
+    const name = (body.name || "").trim() || "default";
+
+    INGEST_TOKENS = INGEST_TOKENS.map((t) =>
+      t.user_id === userId ? { ...t, active: false } : t
+    );
+
+    const tokenId = randomId("tok");
+    const plaintext = randomTokenString();
+    const now = new Date().toISOString();
+
+    const token: IngestToken = {
+      token_id: tokenId,
+      name,
+      active: true,
+      created_at: now,
+      last_used_at: null,
+      company_id: companyId,
+      user_id: userId,
+      plaintext,
+    };
+    INGEST_TOKENS.push(token);
+
+    return HttpResponse.json(
+      {
+        token_id: tokenId,
+        token: plaintext,
+        name,
+      },
+      { status: 201 }
+    );
+  }),
+
+  http.get(`${API_BASE}/ingest_tokens`, async ({ request }) => {
+    const claims = getClaimsFromRequest(request);
+    const companyId = claims.company_id;
+    const userId = claims.user_id;
+    if (!companyId || !userId) {
+      return HttpResponse.json({ message: "unauthorized" }, { status: 401 });
+    }
+
+    const tokensForUser = INGEST_TOKENS.filter(
+      (t) => t.company_id === companyId && t.user_id === userId
+    )
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+      .map((t) => ({
+        token_id: t.token_id,
+        name: t.name,
+        active: t.active,
+        created_at: t.created_at,
+        last_used_at: t.last_used_at,
+      }));
+
+    return HttpResponse.json({ tokens: tokensForUser });
+  }),
+
+  http.post(`${API_BASE}/metrics`, async ({ request }) => {
+    const token = authIngestToken(request);
+    if (!token) {
+      return HttpResponse.json({ message: "unauthorized" }, { status: 401 });
+    }
+
+    const body = (await request.json().catch(() => ({}))) as {
+      site_id?: string;
+      measured_at?: string;
+      it_load_pct?: number;
+      measurements?: { indicator?: string; value?: number }[];
+    };
+
+    const siteId = (body.site_id || "").trim();
+    if (!siteId) {
+      return HttpResponse.json(
+        { message: "site_id required" },
+        { status: 400 }
+      );
+    }
+
+    const siteExists = SITES.some((s) => s.site_id === siteId);
+    if (!siteExists) {
+      return HttpResponse.json({ message: "site not found" }, { status: 404 });
+    }
+
+    const measurements = Array.isArray(body.measurements)
+      ? body.measurements
+      : [];
+    if (!measurements.length) {
+      return HttpResponse.json(
+        { message: "measurements[] required" },
+        { status: 400 }
+      );
+    }
+
+    const ingested = measurements.length;
+
+    return HttpResponse.json({
+      site_id: siteId,
+      ingested,
+    });
   }),
 ];

@@ -771,11 +771,17 @@ export default function CompliancePage() {
                     onValueChange={setSelectedFrameworkCode}
                   >
                     <SelectTrigger id="framework-select">
-                      <SelectValue placeholder="Select a framework" />
+                      <div className="flex justify-center w-full">
+                        <SelectValue placeholder="Select a framework" />
+                      </div>
                     </SelectTrigger>
                     <SelectContent>
                       {Object.keys(FRAMEWORK_PRESETS_META).map((code) => (
-                        <SelectItem key={code} value={code}>
+                        <SelectItem
+                          key={code}
+                          value={code}
+                          className="flex justify-center w-full"
+                        >
                           {FRAMEWORK_PRESETS_META[code].displayName}
                         </SelectItem>
                       ))}
