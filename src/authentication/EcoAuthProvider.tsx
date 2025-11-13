@@ -13,6 +13,7 @@ export const EcoAuthProvider = ({ children }: { children: ReactNode }) => {
   const [accessToken, setAccessToken] = useState<string | undefined>();
   const [userName, setUserName] = useState<string | undefined>();
   const [roles, setRoles] = useState<string[]>([]);
+  const [email, setEmail] = useState<string | undefined>();
   const [isRestored, setIsRestored] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -29,6 +30,7 @@ export const EcoAuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(session.profile?.sub);
     setUserName(session.profile?.name);
     setRoles(session.profile?.roles ?? []);
+    setEmail(session.profile?.email);
     setIsRestored(true);
   }, []);
 
@@ -78,6 +80,7 @@ export const EcoAuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(profile.sub);
       setAccessToken(access_token);
       setRoles(profile.roles);
+      setEmail(profile.email);
       setUserName(profile.name);
       setIsRestored(true);
     } catch (error) {
@@ -111,6 +114,7 @@ export const EcoAuthProvider = ({ children }: { children: ReactNode }) => {
         userName,
         accessToken,
         roles,
+        email,
         users,
       }}
     >

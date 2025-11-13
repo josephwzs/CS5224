@@ -12,6 +12,7 @@ export type EcoAuthContextType = {
   userName?: string;
   accessToken?: string;
   roles?: string[];
+  email?: string;
   users: User[];
 };
 

@@ -12,6 +12,7 @@ import { Toaster } from "sonner";
 import { EcoAuthProvider } from "./authentication/EcoAuthProvider.tsx";
 import { ThemeProvider } from "./components/theme-provider.tsx";
 import { parseAmplifyConfig } from "aws-amplify/utils";
+import { OverlayProvider } from "./components/common/dragOverlayContext.tsx";
 
 if (import.meta.env.VITE_USE_MOCKS === "true") {
   import("./mock/browser.ts").then(({ worker }) => {
@@ -39,14 +40,16 @@ createRoot(document.getElementById("root")!).render(
     {/* <App /> */}
     {/* </Authenticator> */}
     <ThemeProvider>
-      <NotificationProvider>
-        <BrowserRouter>
-          <EcoAuthProvider>
-            <App />
-          </EcoAuthProvider>
-          <Toaster position="top-center" />
-        </BrowserRouter>
-      </NotificationProvider>
+      <OverlayProvider>
+        <NotificationProvider>
+          <BrowserRouter>
+            <EcoAuthProvider>
+              <App />
+            </EcoAuthProvider>
+            <Toaster position="top-center" />
+          </BrowserRouter>
+        </NotificationProvider>
+      </OverlayProvider>
     </ThemeProvider>
   </StrictMode>
 );
