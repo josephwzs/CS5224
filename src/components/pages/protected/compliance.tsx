@@ -38,6 +38,7 @@ import type {
   ThresholdRule,
   AlertsResponse,
   Alert,
+  SiteResponse,
 } from "@/types/data-types";
 
 type PueMode = "STATIC" | "LOAD_AWARE";
@@ -339,16 +340,14 @@ export default function CompliancePage() {
       try {
         const [frameworksRes, sitesRes] = await Promise.all([
           amplifyApi.get<FrameworksResponse>("BackendApi", "/frameworks"),
-          amplifyApi.get<Site[]>("BackendApi", "/sites"),
+          amplifyApi.get<SiteResponse>("BackendApi", "/sites"),
         ]);
 
         setFrameworks(frameworksRes.frameworks ?? []);
-        setSites(Array.isArray(sitesRes) ? sitesRes : [sitesRes]);
+        setSites(sitesRes.sites ?? []);
 
-        if (Array.isArray(sitesRes) && sitesRes.length > 0) {
-          setSiteId(sitesRes[0].site_id);
-        } else if (!Array.isArray(sitesRes) && sitesRes) {
-          setSiteId((sitesRes as Site).site_id);
+        if (sitesRes.sites.length > 0) {
+          setSiteId(sitesRes.sites[0].site_id);
         }
       } catch (err) {
         console.error("Failed to load initial data", err);

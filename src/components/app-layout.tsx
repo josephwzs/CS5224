@@ -78,9 +78,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
     localStorage.setItem(RIGHT_SIDEBAR_KEY, String(rightSidebarOpen));
   }, [rightSidebarOpen]);
 
-  if (!user) {
-    return null;
-  }
+  // if (!user) {
+  //   return null;
+  // }
 
   return (
     <div className="h-screen overflow-hidden bg-background flex flex-col">

@@ -20,7 +20,7 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { Site } from "@/types/data-types";
+import { Site, SiteResponse } from "@/types/data-types";
 
 export default function OnboardingPage() {
   const [error, setError] = useState<string | null>(null);
@@ -59,8 +59,8 @@ export default function OnboardingPage() {
   }, [navigate]);
 
   useEffect(() => {
-    amplifyApi.get<Site>("BackendApi", "/sites").then((response) => {
-      setSites([response]);
+    amplifyApi.get<SiteResponse>("BackendApi", "/sites").then((response) => {
+      setSites(response.sites ?? []);
     });
   }, []);
 
