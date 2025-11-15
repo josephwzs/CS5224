@@ -14,11 +14,11 @@ import { ThemeProvider } from "./components/theme-provider.tsx";
 import { parseAmplifyConfig } from "aws-amplify/utils";
 import { OverlayProvider } from "./components/common/dragOverlayContext.tsx";
 
-if (import.meta.env.VITE_USE_MOCKS === "true") {
-  import("./mock/browser.ts").then(({ worker }) => {
-    worker.start();
-  });
-}
+// if (import.meta.env.VITE_USE_MOCKS === "true") {
+//   import("./mock/browser.ts").then(({ worker }) => {
+//     worker.start();
+//   });
+// }
 
 const amplifyConfig = parseAmplifyConfig(outputs);
 
@@ -27,7 +27,8 @@ Amplify.configure({
   API: {
     REST: {
       BackendApi: {
-        endpoint: "http://localhost:8080",
+        endpoint:
+          "https://i8dpfh2996.execute-api.ap-southeast-1.amazonaws.com:",
         region: "ap-southeast-1",
       },
     },
