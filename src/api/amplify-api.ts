@@ -1,7 +1,23 @@
+// src/api/amplifyApi.ts
 import { get, post, put, del } from "aws-amplify/api";
 
 export type Query = Record<string, string | number | undefined>;
 export type Headers = Record<string, string>;
+
+const OIDC_SESSION_KEY = "oidc.user";
+
+function getAccessTokenFromSession(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const raw = sessionStorage.getItem(OIDC_SESSION_KEY);
+  if (!raw) return undefined;
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed.access_token as string | undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export function buildQueryParams(
   queryParams?: Record<string, unknown>
@@ -25,6 +41,15 @@ function withJsonHeader(body: unknown, headers?: Headers): Headers | undefined {
   return { "Content-Type": "application/json", ...(headers ?? {}) };
 }
 
+function withAuth(headers?: Headers): Headers | undefined {
+  const token = getAccessTokenFromSession();
+  if (!token) return headers;
+  return {
+    ...(headers ?? {}),
+    Authorization: `Bearer ${token}`,
+  };
+}
+
 export const amplifyApi = {
   async get<T = unknown>(
     apiName = "BackendApi",
@@ -36,7 +61,7 @@ export const amplifyApi = {
       apiName,
       path,
       options: {
-        headers,
+        headers: withAuth(headers),
         queryParams: buildQueryParams(queryParams),
       },
     });
@@ -47,18 +72,20 @@ export const amplifyApi = {
   async post<T = unknown>(
     apiName = "BackendApi",
     path: string,
-    body?: Record<string, string>,
+    body?: Record<string, any>,
     headers?: Headers
   ): Promise<T> {
     const isFormData =
       typeof FormData !== "undefined" && body instanceof FormData;
+
+    const baseHeaders = isFormData ? headers : withJsonHeader(body, headers);
 
     const op = post({
       apiName,
       path,
       options: {
         body,
-        headers: isFormData ? headers : withJsonHeader(body, headers),
+        headers: withAuth(baseHeaders),
       },
     });
 
@@ -74,12 +101,14 @@ export const amplifyApi = {
   ): Promise<T> {
     const isFormData = body instanceof FormData;
     const bodyData = isFormData ? body : JSON.stringify(body);
+    const baseHeaders = withJsonHeader(body, headers);
+
     const op = put({
       apiName,
       path,
       options: {
         body: bodyData,
-        headers: withJsonHeader(body, headers),
+        headers: withAuth(baseHeaders),
       },
     });
     const { body: res } = await op.response;
@@ -94,7 +123,9 @@ export const amplifyApi = {
     const op = del({
       apiName,
       path,
-      options: { headers },
+      options: {
+        headers: withAuth(headers),
+      },
     });
     const response = await op.response;
     try {

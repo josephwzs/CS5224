@@ -47,29 +47,31 @@ export const EcoAuthProvider = ({ children }: { children: ReactNode }) => {
       });
 
       const { body: responseBody } = await restOperation.response;
-      const {
-        token: access_token,
-        id_token,
-        userName,
-      } = (await responseBody.json()) as {
-        token: string;
-        id_token: string;
-        userName: string;
-      };
 
-      const decoded = JSON.parse(atob(access_token.split(".")[1]));
-      const expiry = Math.floor(Date.now() / 1000) + 3600;
+      const { token: access_token, company_id } =
+        (await responseBody.json()) as {
+          token: string;
+          company_id?: string;
+        };
+
+      // Decode JWT payload
+      const [, payload] = access_token.split(".");
+      const decoded = JSON.parse(atob(payload));
+
+      const expiry = Math.floor(Date.now() / 1000) + 3600; // or decoded.exp if present
 
       const profile = {
         sub: decoded.sub,
         email: decoded.email,
         roles: decoded.roles ?? [],
-        name: userName,
+        // prefer name if present, fallback to email or sub
+        name: decoded.name ?? decoded.email ?? decoded.sub,
+        company_id,
       };
 
       const oidcSession = {
         access_token,
-        id_token: id_token || "",
+        id_token: "", // you don't get one; keep shape consistent
         token_type: "Bearer",
         expires_at: expiry,
         profile,
